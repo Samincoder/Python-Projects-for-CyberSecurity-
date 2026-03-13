@@ -1,0 +1,90 @@
+import hashlib  # Library used to generate hashes like MD5 or SHA256
+import time     # Used to measure how long the cracking process takes
+
+# ==============================
+# Configuration
+# ==============================
+
+HASH_FILE = "hashes.txt"       # File containing target hashes we want to crack
+WORDLIST_FILE = "wordlist.txt" # File containing possible passwords to test
+ALGORITHM = "md5"              # Hash algorithm to use ("md5" or "sha256")
+SALT = ""                      # Optional salt used when hashing passwords
+SALT_POSITION = "suffix"       # Where salt is added ("prefix" or "suffix")
+
+# ==============================
+# Hash Function
+# ==============================
+
+def hash_word(word):
+    """
+    Takes a word (candidate password) and returns its hash
+    using the selected algorithm and salt configuration.
+    """
+
+    # If a salt is provided, modify the word accordingly
+    if SALT:
+        # If SALT_POSITION is prefix → SALT + word
+        # If SALT_POSITION is suffix → word + SALT
+        word = SALT + word if SALT_POSITION == "prefix" else word + SALT
+
+    # If algorithm selected is MD5
+    if ALGORITHM == "md5":
+        return hashlib.md5(word.encode()).hexdigest()  # Encode string then hash
+
+    # If algorithm selected is SHA256
+    elif ALGORITHM == "sha256":
+        return hashlib.sha256(word.encode()).hexdigest()  # Generate SHA256 hash
+
+    # If algorithm is something else
+    else:
+        raise ValueError("Unsupported algorithm")  # Stop program if invalid option
+
+# ==============================
+# Main Function
+# ==============================
+
+def main():
+    start = time.time()  # Record start time to measure cracking speed
+
+    # Open the hash file and read all hashes we want to crack
+    with open(HASH_FILE, "r") as f:
+        target_hashes = [line.strip() for line in f]  
+        # Remove newline characters and store hashes in a list
+
+    # Open the wordlist containing possible passwords
+    with open(WORDLIST_FILE, "r") as f:
+        words = [line.strip() for line in f]  
+        # Store all candidate passwords in a list
+
+    cracked = {}  # Dictionary to store cracked hashes and their passwords
+
+    # Loop through every word in the wordlist
+    for word in words:
+
+        # Generate the hash for this word using our hash_word() function
+        hashed = hash_word(word)
+
+        # Check if the generated hash matches any target hash
+        if hashed in target_hashes:
+
+            # Print the cracked result
+            print(f"[+] CRACKED: {hashed} -> {word}")
+
+            # Save the cracked hash and password in the dictionary
+            cracked[hashed] = word
+
+    end = time.time()  # Record end time after cracking attempt
+
+    # Print total time taken
+    print(f"\nFinished in {round(end - start, 2)} seconds")
+
+    # Print how many hashes were cracked
+    print(f"Total cracked: {len(cracked)}")
+
+# ==============================
+# Program Entry Point
+# ==============================
+
+# This ensures the program runs main() only when executed directly
+if __name__ == "__main__":
+    main()
