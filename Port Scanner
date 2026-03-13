@@ -1,0 +1,57 @@
+import socket  #networking library and connects to ports 
+import concurrent.futures  #Multithreading and scans many ports once
+import time #measures how long the scan takes
+
+# ==============================
+# Configuration
+# ==============================
+TARGET = "scanme.nmap.org"  # Change to your authorized target
+PORT_RANGE = range(1, 1025)
+THREADS = 100 #ports scanned simultaneously
+
+# ==============================
+# Port Scan Function
+# ==============================
+def scan_port(port):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1) #Wait 1 second for a response
+
+#AF_INET → IPv4,SOCK_STREAM → TCP connection
+# So this creates a TCP socket.
+# try used for error handling 
+
+        result = sock.connect_ex((TARGET, port))
+
+        if result == 0:
+            print(f"[+] Port {port} is OPEN")
+
+        sock.close()
+
+    except Exception as e:
+        print(f"[!] Error scanning port {port}: {e}")
+
+#If something goes wrong (network issue, DNS issue, etc.), it prints the error instead of crashing the program
+
+# ==============================
+# Main
+# ==============================
+def main():
+    print(f"Scanning {TARGET}...\n")
+
+    start = time.time() #records the start time 
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=THREADS) as executor:
+        executor.map(scan_port, PORT_RANGE) # It scans 100 ports at the same time.
+
+    end = time.time() #records finish time 
+
+    print(f"\nDone in {round(end - start, 2)} seconds")
+
+#calculates scan time 
+
+
+if __name__ == "__main__":
+    main()
+
+#If this file is executed directly, run the main() function
