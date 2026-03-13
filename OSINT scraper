@@ -1,0 +1,134 @@
+import requests  # Used to send HTTP requests to download webpages
+from bs4 import BeautifulSoup  # Library used to parse HTML content
+import re  # Regular expressions library used for pattern searching
+import csv  # Used to save extracted data into a CSV file
+from urllib.parse import urljoin  # Used to convert relative links into full URLs
+
+# ==============================
+# Configuration
+# ==============================
+
+TARGET_URL = "https://example.com"  # Website we want to gather OSINT from
+OUTPUT_FILE = "osint_results.csv"   # File where extracted information will be saved
+TIMEOUT = 5                         # Maximum time (seconds) to wait for website response
+
+
+# ==============================
+# Extraction Functions
+# ==============================
+
+def extract_emails(text):
+    """
+    Extracts email addresses from webpage text.
+    """
+
+    # Regex pattern that matches common email formats
+    emails = re.findall(
+        r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
+        text
+    )
+
+    # Convert to set to remove duplicates, then back to list
+    return list(set(emails))
+
+
+def extract_phones(text):
+    """
+    Extracts phone numbers from webpage text.
+    """
+
+    # Regex pattern that captures many international phone formats
+    phones = re.findall(
+        r"\+?\d[\d\s\-\(\)]{7,}\d",
+        text
+    )
+
+    # Remove duplicates
+    return list(set(phones))
+
+
+def extract_social_links(soup, base_url):
+    """
+    Extracts links to common social media platforms.
+    """
+
+    # List of social media domains we want to detect
+    domains = ["twitter.com", "facebook.com", "linkedin.com", "github.com"]
+
+    links = set()  # Use set to avoid duplicate links
+
+    # Find all anchor tags (<a>) that contain an href attribute
+    for tag in soup.find_all("a", href=True):
+
+        # Convert relative URLs into full URLs
+        href = urljoin(base_url, tag["href"])
+
+        # Check if link belongs to one of our social domains
+        for domain in domains:
+            if domain in href:
+                links.add(href)
+
+    # Return results as list
+    return list(links)
+
+
+# ==============================
+# Main Function
+# ==============================
+
+def main():
+
+    try:
+        # Send HTTP request to download webpage
+        response = requests.get(TARGET_URL, timeout=TIMEOUT)
+
+        # Raise an error if the request failed
+        response.raise_for_status()
+
+    except requests.RequestException as e:
+        # Print error if connection fails
+        print(f"Error: {e}")
+        return
+
+
+    # Parse HTML using BeautifulSoup
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # Extract visible text from the webpage
+    text = soup.get_text()
+
+    # Run extraction functions
+    emails = extract_emails(text)
+    phones = extract_phones(text)
+    socials = extract_social_links(soup, TARGET_URL)
+
+
+    # Open CSV file for writing results
+    with open(OUTPUT_FILE, "w", newline="") as csvfile:
+
+        writer = csv.writer(csvfile)
+
+        # Write header row
+        writer.writerow(["Type", "Value"])
+
+        # Save emails
+        for email in emails:
+            writer.writerow(["Email", email])
+
+        # Save phone numbers
+        for phone in phones:
+            writer.writerow(["Phone", phone])
+
+        # Save social media links
+        for link in socials:
+            writer.writerow(["Social", link])
+
+    print("Done. Results saved.")
+
+
+# ==============================
+# Program Entry Point
+# ==============================
+
+if __name__ == "__main__":
+    main()
