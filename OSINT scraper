@@ -1,16 +1,16 @@
-import requests  # Used to send HTTP requests to download webpages
-from bs4 import BeautifulSoup  # Library used to parse HTML content
-import re  # Regular expressions library used for pattern searching
-import csv  # Used to save extracted data into a CSV file
-from urllib.parse import urljoin  # Used to convert relative links into full URLs
+import requests
+from bs4 import BeautifulSoup
+import re
+import csv
+from urllib.parse import urljoin, urlparse
 
 # ==============================
 # Configuration
 # ==============================
 
-TARGET_URL = "https://example.com"  # Website we want to gather OSINT from
-OUTPUT_FILE = "osint_results.csv"   # File where extracted information will be saved
-TIMEOUT = 5                         # Maximum time (seconds) to wait for website response
+TARGET_URL = "https://example.com"
+OUTPUT_FILE = "advanced_osint_results.csv"
+TIMEOUT = 5
 
 
 # ==============================
@@ -18,117 +18,170 @@ TIMEOUT = 5                         # Maximum time (seconds) to wait for website
 # ==============================
 
 def extract_emails(text):
-    """
-    Extracts email addresses from webpage text.
-    """
-
-    # Regex pattern that matches common email formats
-    emails = re.findall(
-        r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
-        text
-    )
-
-    # Convert to set to remove duplicates, then back to list
-    return list(set(emails))
+    """Extract emails from page text"""
+    pattern = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
+    return list(set(re.findall(pattern, text)))
 
 
 def extract_phones(text):
-    """
-    Extracts phone numbers from webpage text.
-    """
-
-    # Regex pattern that captures many international phone formats
-    phones = re.findall(
-        r"\+?\d[\d\s\-\(\)]{7,}\d",
-        text
-    )
-
-    # Remove duplicates
-    return list(set(phones))
+    """Extract phone numbers"""
+    pattern = r"\+?\d[\d\s\-\(\)]{7,}\d"
+    return list(set(re.findall(pattern, text)))
 
 
 def extract_social_links(soup, base_url):
-    """
-    Extracts links to common social media platforms.
-    """
+    """Extract social media links"""
+    social_domains = [
+        "twitter.com",
+        "facebook.com",
+        "linkedin.com",
+        "github.com",
+        "instagram.com"
+    ]
 
-    # List of social media domains we want to detect
-    domains = ["twitter.com", "facebook.com", "linkedin.com", "github.com"]
+    links = set()
 
-    links = set()  # Use set to avoid duplicate links
-
-    # Find all anchor tags (<a>) that contain an href attribute
     for tag in soup.find_all("a", href=True):
-
-        # Convert relative URLs into full URLs
         href = urljoin(base_url, tag["href"])
 
-        # Check if link belongs to one of our social domains
-        for domain in domains:
+        for domain in social_domains:
             if domain in href:
                 links.add(href)
 
-    # Return results as list
     return list(links)
 
 
+def extract_domains(soup, base_url):
+    """Extract external domains linked from the page"""
+    base_domain = urlparse(base_url).netloc
+    domains = set()
+
+    for tag in soup.find_all("a", href=True):
+        href = urljoin(base_url, tag["href"])
+        parsed = urlparse(href)
+
+        if parsed.netloc and parsed.netloc != base_domain:
+            domains.add(parsed.netloc)
+
+    return list(domains)
+
+
+def extract_internal_links(soup, base_url):
+    """Find internal pages on the website"""
+    base_domain = urlparse(base_url).netloc
+    links = set()
+
+    for tag in soup.find_all("a", href=True):
+        href = urljoin(base_url, tag["href"])
+        parsed = urlparse(href)
+
+        if parsed.netloc == base_domain:
+            links.add(href)
+
+    return list(links)
+
+
+def detect_technologies(response, soup):
+    """Detect technologies using headers and meta tags"""
+    tech = []
+
+    headers = response.headers
+
+    if "Server" in headers:
+        tech.append(f"Server: {headers['Server']}")
+
+    if "X-Powered-By" in headers:
+        tech.append(f"Powered By: {headers['X-Powered-By']}")
+
+    generator = soup.find("meta", attrs={"name": "generator"})
+    if generator:
+        tech.append(f"Generator: {generator.get('content')}")
+
+    return tech
+
+
+def extract_metadata(soup):
+    """Extract page title and description"""
+    data = []
+
+    if soup.title:
+        data.append(("Title", soup.title.text.strip()))
+
+    description = soup.find("meta", attrs={"name": "description"})
+    if description:
+        data.append(("Description", description.get("content")))
+
+    return data
+
+
+def guess_employee_names(text):
+    """
+    Very basic heuristic to guess potential employee names
+    (capitalized words like 'John Smith')
+    """
+    pattern = r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"
+    return list(set(re.findall(pattern, text)))
+
+
 # ==============================
-# Main Function
+# Main
 # ==============================
 
 def main():
 
+    print("Starting OSINT scan...\n")
+
     try:
-        # Send HTTP request to download webpage
         response = requests.get(TARGET_URL, timeout=TIMEOUT)
-
-        # Raise an error if the request failed
         response.raise_for_status()
-
     except requests.RequestException as e:
-        # Print error if connection fails
-        print(f"Error: {e}")
+        print("Error:", e)
         return
 
-
-    # Parse HTML using BeautifulSoup
     soup = BeautifulSoup(response.text, "html.parser")
-
-    # Extract visible text from the webpage
     text = soup.get_text()
 
-    # Run extraction functions
     emails = extract_emails(text)
     phones = extract_phones(text)
     socials = extract_social_links(soup, TARGET_URL)
+    domains = extract_domains(soup, TARGET_URL)
+    internal_links = extract_internal_links(soup, TARGET_URL)
+    tech = detect_technologies(response, soup)
+    metadata = extract_metadata(soup)
+    employees = guess_employee_names(text)
 
-
-    # Open CSV file for writing results
     with open(OUTPUT_FILE, "w", newline="") as csvfile:
 
         writer = csv.writer(csvfile)
-
-        # Write header row
         writer.writerow(["Type", "Value"])
 
-        # Save emails
         for email in emails:
             writer.writerow(["Email", email])
 
-        # Save phone numbers
         for phone in phones:
             writer.writerow(["Phone", phone])
 
-        # Save social media links
         for link in socials:
             writer.writerow(["Social", link])
 
-    print("Done. Results saved.")
+        for domain in domains:
+            writer.writerow(["External Domain", domain])
 
+        for link in internal_links:
+            writer.writerow(["Internal Link", link])
 
-# ==============================
-# Program Entry Point
-# ==============================
+        for t in tech:
+            writer.writerow(["Technology", t])
+
+        for key, value in metadata:
+            writer.writerow([key, value])
+
+        for name in employees:
+            writer.writerow(["Possible Employee", name])
+
+    print("Scan complete.")
+    print(f"Results saved to {OUTPUT_FILE}")
+
 
 if __name__ == "__main__":
     main()
