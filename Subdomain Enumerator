@@ -1,0 +1,75 @@
+import dns.resolver          # Used to check if a domain exists in DNS
+import requests              # Used to send HTTP requests
+import concurrent.futures    # Used for multithreading (faster scanning)
+import time                  # Used to measure scan duration
+
+
+# ==============================
+# Configuration
+# ==============================
+
+DOMAIN = "example.com"               # Target domain
+WORDLIST_FILE = "wordlist.txt"      # File containing possible subdomain names
+OUTPUT_FILE = "found_subdomains.txt" # File to store discovered subdomains
+THREADS = 50                         # Number of parallel threads
+TIMEOUT = 2                          # HTTP request timeout (seconds)
+
+
+# ==============================
+# Function: Check one subdomain
+# ==============================
+
+def check_subdomain(subdomain):
+
+    # Combine subdomain with main domain
+    full_domain = f"{subdomain}.{DOMAIN}"
+
+    try:
+        # Check if the domain exists in DNS
+        dns.resolver.resolve(full_domain, 'A')
+
+        try:
+            # Try sending an HTTP request
+            response = requests.get(f"http://{full_domain}", timeout=TIMEOUT)
+
+            print(f"[+] Found: {full_domain} (Status: {response.status_code})")
+
+        except requests.RequestException:
+            # Domain exists but no HTTP response
+            print(f"[+] Found: {full_domain} (No HTTP response)")
+
+        # Save discovered domain to file
+        with open(OUTPUT_FILE, "a") as f:
+            f.write(full_domain + "\n")
+
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.Timeout):
+        # Ignore domains that do not exist
+        pass
+
+
+# ==============================
+# Main function
+# ==============================
+
+def main():
+
+    start = time.time()  # Start timer
+
+    open(OUTPUT_FILE, "w").close()  # Clear old results
+
+    # Load subdomains from wordlist
+    with open(WORDLIST_FILE, "r") as file:
+        subdomains = [line.strip() for line in file]
+
+    # Run scans using multiple threads
+    with concurrent.futures.ThreadPoolExecutor(max_workers=THREADS) as executor:
+        executor.map(check_subdomain, subdomains)
+
+    end = time.time()  # End timer
+
+    print(f"\nDone in {round(end - start, 2)} seconds")
+
+
+# Run the program
+if __name__ == "__main__":
+    main()
